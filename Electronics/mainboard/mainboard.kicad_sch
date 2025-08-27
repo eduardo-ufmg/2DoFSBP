@@ -2891,7 +2891,7 @@
 		)
 		(uuid "035f5cc0-d380-4a5a-a082-2898e7af0643")
 	)
-	(label "pwm"
+	(label "m0_pwm"
 		(at 59.69 92.71 180)
 		(effects
 			(font
@@ -2901,7 +2901,7 @@
 		)
 		(uuid "0565b2ba-2d12-45fc-a20f-fa1ba1481927")
 	)
-	(label "dir"
+	(label "m1_dir"
 		(at 59.69 129.54 180)
 		(effects
 			(font
@@ -2991,7 +2991,7 @@
 		)
 		(uuid "1a047ac0-11fd-4817-97b5-9a33a35560d9")
 	)
-	(label "enc_vcc"
+	(label "e0_v+"
 		(at 59.69 97.79 180)
 		(effects
 			(font
@@ -3121,7 +3121,7 @@
 		)
 		(uuid "52d1341f-eb05-4039-bd48-162f507762f9")
 	)
-	(label "enc_vcc"
+	(label "e1_v+"
 		(at 59.69 132.08 180)
 		(effects
 			(font
@@ -3221,7 +3221,7 @@
 		)
 		(uuid "6ff94336-97b6-4325-8659-35c97a57b99d")
 	)
-	(label "enc_b"
+	(label "e1_b"
 		(at 59.69 137.16 180)
 		(effects
 			(font
@@ -3271,7 +3271,7 @@
 		)
 		(uuid "72d05d65-d2c1-4035-a1d0-e940c55f5825")
 	)
-	(label "brake"
+	(label "m0_brk"
 		(at 59.69 90.17 180)
 		(effects
 			(font
@@ -3291,7 +3291,7 @@
 		)
 		(uuid "76a16cd3-6eb2-4eec-8650-cd2f7357f6e8")
 	)
-	(label "enc_a"
+	(label "e0_a"
 		(at 59.69 100.33 180)
 		(effects
 			(font
@@ -3331,7 +3331,7 @@
 		)
 		(uuid "85311aeb-f62b-4160-be11-edff9e191873")
 	)
-	(label "enc_a"
+	(label "e1_a"
 		(at 59.69 134.62 180)
 		(effects
 			(font
@@ -3461,7 +3461,7 @@
 		)
 		(uuid "b1b733e0-86bf-4e3d-8ebf-019fd84acd45")
 	)
-	(label "pwm"
+	(label "m1_pwm"
 		(at 59.69 127 180)
 		(effects
 			(font
@@ -3621,7 +3621,7 @@
 		)
 		(uuid "df19bcd9-7dcf-4b4e-a67c-c370af4607b8")
 	)
-	(label "brake"
+	(label "m1_brk"
 		(at 59.69 124.46 180)
 		(effects
 			(font
@@ -3711,7 +3711,7 @@
 		)
 		(uuid "f0f37a47-c59c-43e1-9369-056f5d6f12e7")
 	)
-	(label "enc_b"
+	(label "e0_b"
 		(at 59.69 102.87 180)
 		(effects
 			(font
@@ -3731,7 +3731,7 @@
 		)
 		(uuid "f748bc9c-cc7c-406d-a080-eb66ccdce26b")
 	)
-	(label "dir"
+	(label "m0_dir"
 		(at 59.69 95.25 180)
 		(effects
 			(font
@@ -4028,7 +4028,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical"
+		(property "Footprint" "Connector_PinSocket_2.54mm:PinSocket_1x19_P2.54mm_Vertical"
 			(at 142.24 105.41 0)
 			(effects
 				(font
@@ -7457,7 +7457,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical"
+		(property "Footprint" "Connector_PinSocket_2.54mm:PinSocket_1x19_P2.54mm_Vertical"
 			(at 163.83 105.41 0)
 			(effects
 				(font
@@ -7714,7 +7714,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical"
+		(property "Footprint" "Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical"
 			(at 251.46 140.97 0)
 			(effects
 				(font
