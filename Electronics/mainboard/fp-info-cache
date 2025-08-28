@@ -1,4 +1,4 @@
-26651749476378552
+26651749643709802
 Audio_Module
 Reverb_BTDR-1H
 Digital Reverberation Unit, http://www.belton.co.kr/inc/downfile.php?seq=17&file=pdf (footprint from http://www.uk-electronic.de/PDF/BTDR-1.pdf)
@@ -92533,12 +92533,12 @@ mousebite stamp slot break tab 2mm edge on-edge
 0
 0
 Perfboards
-Perfboard_27x35_2.54mm
+Perfboard_90x70_2.54mm
 Perfboard, {ROWS}x{COLS} grid, {PITCH:.2f}mm pitch, 1.80mm pads, 1.00mm drills
 perfboard protoboard
 0
-945
-945
+713
+713
 Potentiometer_SMD
 Potentiometer_ACP_CA6-VSMD_Vertical
 Potentiometer, vertical, ACP CA6-VSMD, http://www.acptechnologies.com/wp-content/uploads/2017/06/01-ACP-CA6.pdf
