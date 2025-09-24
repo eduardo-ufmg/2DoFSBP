@@ -1,0 +1,58 @@
+# Mechanical Project
+[ ] Refactor motor connector
+[ ] Make housing for a stem under the base
+
+# Printing
+[ ] Print and test the shaft connector
+[ ] Print a half-wheel pair
+[ ] Conclude motor identification before proceeding
+[ ] Print and test a motor connector
+[ ] Print and test the base
+[ ] Print and test a connector for the wheel guard
+[ ] Print and test a wheel guard
+[ ] Print and test the second set
+
+# Motor Identification
+[ ] Test motor
+[ ] Gather the following information
+  - Is the PWM signal active low or active high?
+  - Which level in the motor's DIR pin makes it rotate counterclockwise (from the motor's perspective, rather than facing its front)?
+  - When the motor is rotating counterclockwise, the encoder output from [this api](https://github.com/madhephaestus/ESP32Encoder) increments or decrements (use attachFullQuad and consider 400 pulses per revolution)?
+[ ] Create a class for the motor
+  - Input signal must be a float in [-1, 1]
+  - -1 &rarr; max speed clockwise, 1 &rarr; max speed counterclockwise
+[ ] Create a class for the encoder
+  - Counterclockwise moviment increments its position, clockwise decrements it
+[ ] Test both classes
+[ ] Write the code for the identification procedure
+  [ ] Microcontroler
+    - Not supposed to compute speed online. Simply collect and transmit the encoder position readings.
+    - Use a series of steps large enough for it to approach steady state, but not enough for it to reach it. (See PRBS identification)
+    - Collect the input signal to the motor's object and the output signal from the encoder's object at 10 ms
+    - Send data to the host at each sampling
+    - Avoid blocking operations
+  [ ] Host
+    - Listen for the experiment data
+    - Store the experiment data when it is finished
+    - Preprocess it
+      - Remove invalid lines
+      - Compute speed and acceleration from the position
+    - Fit a standard DC motor transfer function
+    - Store it and any available statistic about it
+    - Extend it so $U(s)$ is the input signal to the motor's object and $Y(s)$ is the wheels torque
+[ ] Write the code for the model validation procedure
+  [ ] Microcontroler
+    - Use the same code that was used for the identification
+  [ ] Host
+    - Same acquisition and preprocessing as in the identification procedure
+    - Simulate the model for the collected input
+    - Compare its output to the captured output from the system
+
+# Pendulum Modeling
+[ ] Capture a simplified geometric model
+[ ] Model the MIMO system with inputs $T_1$ and $T_2$ and outputs $\Theta$ and $\Phi$, where
+  - $T_1$ is the torque of the motor that controls $\Theta$
+  - $T_2$ is the torque of the motor that controls $\Phi$
+  - $\Theta$ is the pitch angle
+  - $\Phi$ is the roll angle
+  - Coupling is to be considered
