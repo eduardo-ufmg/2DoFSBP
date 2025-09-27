@@ -4,12 +4,7 @@ A two degrees of freedom self balancing pendulum.
 
 # TODO
 
-## Mechanical Project
-- [ ] Refactor motor connector
-- [ ] Make housing for a stem under the base
-
 ## Printing
-- [ ] Print and test the shaft connector
 - [ ] Print a half-wheel pair
 - [ ] Conclude motor identification before proceeding
 - [ ] Print and test a motor connector
