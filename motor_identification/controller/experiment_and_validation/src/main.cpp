@@ -103,7 +103,7 @@ ResultCode runMotorTest()
 
         currentTimeMs = millis();
         if (currentTimeMs - lastTimeMs >= inputChangeTimeMs) {
-            inputValue = (static_cast<float>(esp_random()) / UINT32_MAX) * 2.0f - 1.0f; // Random value between -1.0 and +1.0
+            inputValue = (static_cast<float>(esp_random()) / UINT32_MAX) / 2.0f - 0.25f; // Random value between -0.25 and +0.25
             motor.setSpeed(inputValue);
             lastTimeMs = currentTimeMs;
         }
