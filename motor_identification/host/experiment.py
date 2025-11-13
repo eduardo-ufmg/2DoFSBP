@@ -2,13 +2,14 @@ import serial
 import time
 import struct
 import csv
-import sys
+import matplotlib.pyplot as plt
 
 # --- Configuration ---
 SERIAL_PORT = '/dev/ttyUSB0' # Change as needed
 BAUD_RATE = 115200
 TEST_DATA_LENGTH = 4096
 TIMEOUT_SEC = 2
+SAMPLE_PERIOD_SEC = 0.01 # 10 ms
 
 # --- Protocol Definitions (Must match Comms.h) ---
 HOST_CHECK_CONNECTION   = b'\x01'
@@ -42,9 +43,9 @@ def main():
         ser.reset_input_buffer()
         ser.write(HOST_CHECK_CONNECTION)
         
-        response = ser.read(1)
+        print(f"Waiting for device response...")
+        response = b''
         while response != DEVICE_CHECK_CONNECTION:
-            print(f"Waiting for device response... Received: {response}")
             response = ser.read(1)
         print("   -> Connection confirmed.")
 
@@ -136,6 +137,38 @@ def main():
 
         # 10. Report experiment success
         print("10. Experiment finished successfully.")
+
+        # 11. Plot data
+        print("11. Plotting results...")
+        plot_filename = "experiment_results.png"
+        time_axis = [i * SAMPLE_PERIOD_SEC for i in range(TEST_DATA_LENGTH)]
+        
+        plt.figure(figsize=(10, 8))
+
+        # Top subplot: Input
+        plt.subplot(2, 1, 1)
+        plt.plot(time_axis, input_values, color='blue', label='Input (Speed Setpoint)')
+        plt.title('Motor Experiment Results')
+        plt.ylabel('Input Value')
+        plt.grid(True, alpha=0.5)
+        plt.legend(loc='upper right')
+
+        # Bottom subplot: Angle
+        plt.subplot(2, 1, 2)
+        plt.plot(time_axis, angle_values, color='orange', label='Measured Angle')
+        plt.xlabel('Time (seconds)')
+        plt.ylabel('Angle')
+        plt.grid(True, alpha=0.5)
+        plt.legend(loc='upper right')
+
+        plt.tight_layout()
+        plt.savefig(plot_filename)
+        print(f"    -> Plot saved to {plot_filename}")
+        
+        print("    -> Displaying plot (close window to exit)...")
+        plt.show()
+
+        print("Done.")
 
     except KeyboardInterrupt:
         print("\nOperation cancelled by user.")
