@@ -201,8 +201,8 @@ def main():
     axs[2].set_title(f'Torque Prediction Error (RMSE: {rmse:.4f})')
 
     plt.tight_layout()
-    plt.savefig('validation_results_torque.png')
-    print("Results saved to validation_results_torque.png. Displaying...")
+    plt.savefig('validation_results.png')
+    print("Results saved to validation_results.png. Displaying...")
     plt.show()
 
 if __name__ == "__main__":
