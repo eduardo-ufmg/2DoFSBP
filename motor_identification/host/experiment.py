@@ -128,12 +128,14 @@ def main():
         # 9. Save data to file
         filename = "experiment_data.csv"
         print(f"9. Saving data to {filename}...")
+
+        time_axis = [i * SAMPLE_PERIOD_SEC for i in range(TEST_DATA_LENGTH)]
         
         with open(filename, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
-            writer.writerow(["Index", "Input", "Angle"])
+            writer.writerow(["Time(s)", "Input", "Angle"])
             for i in range(TEST_DATA_LENGTH):
-                writer.writerow([i, input_values[i], angle_values[i]])
+                writer.writerow([time_axis[i], input_values[i], angle_values[i]])
 
         # 10. Report experiment success
         print("10. Experiment finished successfully.")
@@ -141,7 +143,6 @@ def main():
         # 11. Plot data
         print("11. Plotting results...")
         plot_filename = "experiment_results.png"
-        time_axis = [i * SAMPLE_PERIOD_SEC for i in range(TEST_DATA_LENGTH)]
         
         plt.figure(figsize=(10, 8))
 
