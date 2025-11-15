@@ -1,5 +1,10 @@
 #include <Comms.h>
 
+// Infinite loops are acceptable since the experiment is
+// performed under direct supervision and control of the host computer
+// there is no need for timeout handling here
+// we may simply reset the device if something goes wrong
+
 ResultCode waitForConnectionCheck()
 {
     while (true) {
