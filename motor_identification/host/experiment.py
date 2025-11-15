@@ -40,7 +40,6 @@ def main():
 
         # 1. Check connection with controller
         print("1. Checking connection with controller...")
-        ser.reset_input_buffer()
         ser.write(HOST_CHECK_CONNECTION)
         
         print(f"Waiting for device response...")
