@@ -1,141 +1,179 @@
+from __future__ import annotations
 import argparse
 import os
 import sys
+import math
+import warnings
+
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
+from sklearn.linear_model import Ridge
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import mean_squared_error
+
 import matplotlib.pyplot as plt
 
-def read_data(filename):
+import control
+
+# -----------------------
+# Utilities / I/O
+# -----------------------
+def read_data(filename: str) -> tuple[np.ndarray, np.ndarray]:
     if not os.path.isfile(filename):
         raise FileNotFoundError(f"File not found: {filename}")
     df = pd.read_csv(filename)
     if 'Input' not in df.columns or 'Angle' not in df.columns:
-        raise ValueError("CSV must contain 'Input' and 'Angle' columns.")
-    u = df['Input'].to_numpy(dtype=float)
-    y = df['Angle'].to_numpy(dtype=float)
+        raise ValueError("CSV must contain columns named 'Input' and 'Angle'.")
+    u = df['Input'].astype(float).to_numpy()
+    y = df['Angle'].astype(float).to_numpy()
     if u.shape[0] != y.shape[0]:
-        raise ValueError("Input and Angle must have same length.")
+        raise ValueError("Input and Angle must have the same length.")
+    # drop NaNs
+    mask = ~(np.isnan(u) | np.isnan(y))
+    if not mask.all():
+        u = u[mask]
+        y = y[mask]
+    if len(u) < 10:
+        raise ValueError("Not enough valid samples (need >=10).")
     return u, y
 
-def fit_arx(u, y, na=2, nb=1):
+def detrend_remove_mean(u: np.ndarray, y: np.ndarray, detrend: bool) -> tuple[np.ndarray, np.ndarray, dict[str, float]]:
     """
-    Fit ARX model coefficients using least squares.
+    Optionally remove linear trend and/or mean from both signals.
+    Returns processed signals and dictionary with removed trends/means for later restoration.
+    """
+    info = {}
+    if detrend:
+        # remove linear trend using least squares (y = a*t + b)
+        t = np.arange(len(u))
+        A = np.vstack([t, np.ones(len(t))]).T
+        # input trend
+        coeff_u, *_ = np.linalg.lstsq(A, u, rcond=None)
+        trend_u = A @ coeff_u
+        u = u - trend_u
+        info['u_trend_coeff'] = coeff_u.tolist()
+        # output trend
+        coeff_y, *_ = np.linalg.lstsq(A, y, rcond=None)
+        trend_y = A @ coeff_y
+        y = y - trend_y
+        info['y_trend_coeff'] = coeff_y.tolist()
+    # remove mean
+    mu_u = float(np.mean(u))
+    mu_y = float(np.mean(y))
+    u = u - mu_u
+    y = y - mu_y
+    info['u_mean'] = mu_u
+    info['y_mean'] = mu_y
+    return u, y, info
 
-    Model used:
-      y[k] = sum_{i=1..na} a_i * y[k-i] + sum_{j=0..nb-1} b_j * u[k-j] + e[k]
-
-    Returns:
-      a: array shape (na,) -> [a1, a2, ...]
-      b: array shape (nb,) -> [b0, b1, ...]
-      k_start: first k used in regression
+# -----------------------
+# ARX feature matrix builder
+# -----------------------
+def build_arx_phi(u: np.ndarray, y: np.ndarray, na: int, nb: int, nk: int = 0) -> tuple[np.ndarray, np.ndarray, int]:
+    """
+    Build regression matrix Phi and target vector Y for ARX:
+        y[k] = a1*y[k-1] + ... + ana*y[k-na] + b1*u[k-nk] + ... + b_nb*u[k-nk-nb+1] + e[k]
+    nk is input delay (default 0 -> uses u[k]).
+    Returns: Phi (M x (na+nb)), Y (M,), k_start (first sample index used)
     """
     N = len(y)
-    if N < max(na, nb) + 5:
-        # require some minimal data
-        raise ValueError(f"Not enough data (N={N}) for na={na}, nb={nb}.")
-    k_start = max(na, nb - 1)
+    # Effective delay: we need indices k - i >= 0 and k - nk - (nb-1) >= 0
+    k_start = max(na, nk + nb - 1)
     rows = []
     targets = []
     for k in range(k_start, N):
-        phi = []
-        # past outputs y[k-1] .. y[k-na]
+        phi_row = []
+        # past outputs y[k-1]..y[k-na]
         for i in range(1, na + 1):
-            phi.append(y[k - i])
-        # current and past inputs u[k], u[k-1], ...
+            phi_row.append(y[k - i])
+        # inputs b1..b_nb correspond to u[k-nk], u[k-nk-1], ...
         for j in range(0, nb):
-            idx = k - j
-            # if index out-of-range (shouldn't be due to k_start), use 0
-            phi.append(u[idx] if idx >= 0 else 0.0)
-        rows.append(phi)
+            idx = k - nk - j
+            phi_row.append(u[idx] if idx >= 0 else 0.0)
+        rows.append(phi_row)
         targets.append(y[k])
-    Phi = np.vstack(rows)
-    Y = np.array(targets)
+    Phi = np.asarray(rows, dtype=float)
+    Y = np.asarray(targets, dtype=float)
+    return Phi, Y, k_start
+
+# -----------------------
+# ARX estimators
+# -----------------------
+def fit_arx_ols(u: np.ndarray, y: np.ndarray, na: int, nb: int, nk: int = 0) -> dict[str, Any]:
+    Phi, Y, k0 = build_arx_phi(u, y, na, nb, nk)
     theta, *_ = np.linalg.lstsq(Phi, Y, rcond=None)
-    a = theta[0:na].astype(float)
-    b = theta[na:na + nb].astype(float)
-    return a, b, k_start
+    a = theta[:na].copy()
+    b = theta[na:].copy()
+    y_pred = Phi @ theta
+    res = Y - y_pred
+    sigma2 = float(np.var(res, ddof=max(1, Phi.shape[1])))
+    return dict(a=a, b=b, theta=theta, k0=k0, res=res, sigma2=sigma2)
 
-def build_state_space_from_arx(a, b):
+def fit_arx_ridge(u: np.ndarray, y: np.ndarray, na: int, nb: int, nk: int = 0, alpha: float = 1e-3) -> dict[str, Any]:
+    Phi, Y, k0 = build_arx_phi(u, y, na, nb, nk)
+    model = Ridge(alpha=alpha, fit_intercept=False)
+    model.fit(Phi, Y)
+    theta = model.coef_.astype(float)
+    a = theta[:na].copy()
+    b = theta[na:].copy() if nb > 0 else np.array([])
+    y_pred = Phi @ theta
+    res = Y - y_pred
+    sigma2 = float(np.var(res, ddof=max(1, Phi.shape[1])))
+    return dict(a=a, b=b, theta=theta, k0=k0, res=res, sigma2=sigma2, alpha=alpha)
+
+# -----------------------
+# Companion / observer canonical conversion
+# -----------------------
+def arx_to_statespace(a: np.ndarray, b: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Build a discrete-time state-space (A,B,C,D) from ARX coefficients with
-    the ARX model convention used in fit_arx().
-
-    State vector constructed as:
-      x = [ y[k-1], y[k-2], ..., y[k-na],  u[k-1], u[k-2], ..., u[k-(nb-1)] ]^T
-
-    Dimensions:
-      na = len(a)
-      nb = len(b)
-      nx = na + max(nb-1, 0)
-
-    Equations:
-      y[k] = [a1 ... ana, b1 ... b_{nb-1}] * x + b0 * u[k]
-      x_{k+1} = A x_k + B u[k]
+    Convert ARX (y[k] = a1 y[k-1] + ... + ana y[k-na] + b0 u[k] + b1 u[k-1] + ...)
+    into an observer-canonical state-space:
+      x = [y[k-1], y[k-2], ..., y[k-na], u[k-1], u[k-2], ..., u[k-nb+1]]^T
+    This is compatible with the build in previous script but clearer and numerically stable.
     """
-    na = len(a)
-    nb = len(b)
+    na = int(len(a))
+    nb = int(len(b))
     nu_states = max(nb - 1, 0)
     nx = na + nu_states
-
     A = np.zeros((nx, nx), dtype=float)
-    B = np.zeros((nx, 1), dtype=float)
-    # Top-left block (na x na)
-    # First row: a1..ana
+    # top row: a and b_tail
     A[0, 0:na] = a
-    # Shift rows for output-history states
+    if nu_states > 0:
+        b_tail = b[1:]
+        if len(b_tail) < nu_states:
+            b_tail = np.pad(b_tail, (0, nu_states - len(b_tail)), 'constant')
+        A[0, na:na + nu_states] = b_tail[:nu_states]
+    # shift for y-history
     if na > 1:
         A[1:na, 0:na - 1] = np.eye(na - 1)
-
-    # Top-right block: coupling from past-input-states (b1..b_{nb-1})
+    # shift for u-history states
     if nu_states > 0:
-        # b[1:] corresponds to b1..b_{nb-1}
-        b_tail = b[1:]
-        # pad if lengths mismatch
-        if b_tail.shape[0] < nu_states:
-            b_tail = np.pad(b_tail, (0, nu_states - b_tail.shape[0]), 'constant')
-        A[0, na:na + nu_states] = b_tail[:nu_states]
-
-    # Bottom-right block: shift for past-input-states
-    if nu_states > 0:
-        # For u-state vector [u[k-1], u[k-2], ...], its update is:
-        # new_u_states = [u[k], u[k-1], ...] -> shift with ones on subdiagonal
-        for i in range(nu_states - 1):
-            A[na + 1 + i, na + i] = 1.0
-
-    # B: input influence
-    # y equation gets b0 * u[k]
+        if nu_states > 1:
+            A[na + 1:na + nu_states, na:na + nu_states - 1] = np.eye(nu_states - 1)
+    B = np.zeros((nx, 1), dtype=float)
     B[0, 0] = b[0] if nb >= 1 else 0.0
-    # the first u-state (if exists) becomes u[k] -> coefficient 1
     if nu_states > 0:
         B[na, 0] = 1.0
-
-    # Output equation
     C = np.zeros((1, nx), dtype=float)
-    # C multiplies x = [y[k-1]..y[k-na], u[k-1]..]
     C[0, 0:na] = a
     if nu_states > 0:
-        # C includes b1..b_{nb-1}
         b_tail = b[1:]
-        if b_tail.shape[0] < nu_states:
-            b_tail = np.pad(b_tail, (0, nu_states - b_tail.shape[0]), 'constant')
+        if len(b_tail) < nu_states:
+            b_tail = np.pad(b_tail, (0, nu_states - len(b_tail)), 'constant')
         C[0, na:na + nu_states] = b_tail[:nu_states]
-
     D = np.array([[b[0] if nb >= 1 else 0.0]], dtype=float)
-
     return A, B, C, D
 
-def simulate_ss(A, B, C, D, u, x0=None):
-    """
-    Simulate discrete-time state-space model:
-      x_{k+1} = A x_k + B u_k
-      y_k     = C x_k + D u_k
-
-    Returns y_sim array same length as u.
-    """
+# -----------------------
+# Simulation
+# -----------------------
+def simulate_ss(A: np.ndarray, B: np.ndarray, C: np.ndarray, D: np.ndarray, u: np.ndarray, x0: np.ndarray | None = None) -> np.ndarray:
     N = len(u)
     nx = A.shape[0]
-    x = np.zeros((nx, 1), dtype=float) if x0 is None else x0.reshape(nx, 1)
+    x = np.zeros((nx, 1), dtype=float) if x0 is None else x0.reshape((nx, 1)).astype(float)
     y_sim = np.zeros(N, dtype=float)
     for k in range(N):
         uk = np.array([[u[k]]], dtype=float)
@@ -144,60 +182,228 @@ def simulate_ss(A, B, C, D, u, x0=None):
         x = A @ x + B @ uk
     return y_sim
 
+# -----------------------
+# Model selection: grid search (time-series CV) for na,nb and alpha
+# -----------------------
+def select_model_grid(u: np.ndarray, y: np.ndarray, method: str = 'ridge-arx', max_na: int = 6, max_nb: int = 4,
+                      nk: int = 0, alphas: list[float] | None = None, cv_splits: int = 5):
+    if alphas is None:
+        alphas = [0.0, 1e-6, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0]
+    best = None
+    tscv = TimeSeriesSplit(n_splits=cv_splits)
+    N = len(y)
+    for na in range(1, max_na + 1):
+        for nb in range(1, max_nb + 1):
+            for alpha in (alphas if method == 'ridge-arx' else [0.0]):
+                rmses = []
+                for train_idx, test_idx in tscv.split(np.arange(N)):
+                    # construction requires contiguous sequences; use masks but keep indices contiguous by min/max
+                    # We'll create u_train,y_train using train_idx; for robust TS-CV we require enough points for building Phi
+                    u_tr, y_tr = u[train_idx], y[train_idx]
+                    if len(y_tr) < max(na, nk + nb) + 5:
+                        rmses.append(np.inf)
+                        continue
+                    if method == 'ridge-arx':
+                        fit = fit_arx_ridge(u_tr, y_tr, na, nb, nk, alpha=alpha)
+                    else:
+                        fit = fit_arx_ols(u_tr, y_tr, na, nb, nk)
+                    # simulate on test indices: need to simulate from start of test segment with initial states set from last na samples of train
+                    test_start = test_idx[0]
+                    # build initial states from the available history in combined signals
+                    # for simplicity, simulate over full u[test_start:test_end] with initial x built from measured y,u
+                    # construct companion SS
+                    A, B, C, D = arx_to_statespace(fit['a'], fit['b'])
+                    # prepare initial state from available past samples: y[test_start-1]..y[test_start-na], u similarly
+                    def get_initial_x(k_start):
+                        na_local = len(fit['a'])
+                        nb_local = len(fit['b'])
+                        nu_states = max(nb_local - 1, 0)
+                        x0 = np.zeros((na_local + nu_states,), dtype=float)
+                        for i in range(1, na_local + 1):
+                            idx = k_start - i
+                            x0[i - 1] = y[idx] if idx >= 0 else 0.0
+                        for j in range(1, nu_states + 1):
+                            idx = k_start - j
+                            x0[na_local + j - 1] = u[idx] if idx >= 0 else 0.0
+                        return x0
+                    x0 = get_initial_x(test_start)
+                    u_test = u[test_idx]
+                    y_test = y[test_idx]
+                    y_sim = simulate_ss(A, B, C, D, u_test, x0=x0)
+                    rmse = math.sqrt(mean_squared_error(y_test, y_sim))
+                    rmses.append(rmse)
+                avg_rmse = np.mean([r for r in rmses if np.isfinite(r)]) if len(rmses) > 0 else np.inf
+                if best is None or float(avg_rmse) < float(best['score']):
+                    best = dict(method=method, na=na, nb=nb, nk=nk, alpha=alpha, score=avg_rmse)
+    return best
+
+# -----------------------
+# Bootstrap residual resampling for parameter CI
+# -----------------------
+def bootstrap_arx(u: np.ndarray, y: np.ndarray, na: int, nb: int, nk: int, fit_func, n_iter: int = 200, random_state: int | None = None):
+    rng = np.random.default_rng(random_state)
+    fit0 = fit_func(u, y, na, nb, nk)
+    theta0 = fit0['theta']
+    Phi, Y, k0 = build_arx_phi(u, y, na, nb, nk)
+    y_pred = Phi @ theta0
+    resid = Y - y_pred
+    thetas = np.zeros((n_iter, theta0.size), dtype=float)
+    N = len(Y)
+    for it in range(n_iter):
+        resample = rng.choice(resid, size=N, replace=True)
+        Y_boot = y_pred + resample
+        # Refit by LS (unregularized) to the bootstrap target; for ridge we could keep same alpha but simpler to LS
+        theta_b, *_ = np.linalg.lstsq(Phi, Y_boot, rcond=None)
+        thetas[it, :] = theta_b
+    mean_theta = thetas.mean(axis=0)
+    ci_low = np.percentile(thetas, 2.5, axis=0)
+    ci_high = np.percentile(thetas, 97.5, axis=0)
+    return dict(mean=mean_theta, ci_low=ci_low, ci_high=ci_high, samples=thetas, fit0=fit0)
+
+# -----------------------
+# Main CLI
+# -----------------------
 def main():
-    parser = argparse.ArgumentParser(description="ARX -> State-space estimator for experiment_data.csv")
-    parser.add_argument('--file', '-f', default='experiment_data.csv', help='CSV filename (default: experiment_data.csv)')
-    parser.add_argument('--na', type=int, default=2, help='Number of past outputs (na), default 2')
-    parser.add_argument('--nb', type=int, default=1, help='Number of input terms (nb), default 1 (includes u[k])')
-    parser.add_argument('--plot', action='store_true', help='Plot measured vs simulated outputs (requires matplotlib)')
+    parser = argparse.ArgumentParser(description="Advanced ARX -> State-space estimator with model selection & bootstrap")
+    parser.add_argument('--file', '-f', default='experiment_data.csv')
+    parser.add_argument('--method', choices=['arx', 'ridge-arx'], default='ridge-arx')
+    parser.add_argument('--max-na', type=int, default=6)
+    parser.add_argument('--max-nb', type=int, default=4)
+    parser.add_argument('--order', type=int, default=None, help='Manually specify model order na (if provided, skips grid search).')
+    parser.add_argument('--nk', type=int, default=0, help='Input delay (samples). Default 0 (u[k]).')
+    parser.add_argument('--alphas', nargs='*', type=float, default=None, help='List of ridge alphas to search.')
+    parser.add_argument('--cv-splits', type=int, default=5)
+    parser.add_argument('--bootstrap', type=int, default=0, help='Number of bootstrap iterations to estimate parameter CIs (0=off)')
+    parser.add_argument('--detrend', action='store_true', help='Remove linear trend and mean before identification.')
+    parser.add_argument('--plot', action='store_true', help='Plot diagnostics (requires matplotlib).')
     args = parser.parse_args()
 
-    u, y = read_data(args.file)
-    na = max(1, int(args.na))
-    nb = max(1, int(args.nb))
+    u_raw, y_raw = read_data(args.file)
+    u, y, info = detrend_remove_mean(u_raw.copy(), y_raw.copy(), detrend=args.detrend)
 
-    # remove mean to avoid bias
-    u = u - np.mean(u)
-    y = y - np.mean(y)
+    # Model selection
+    if args.order is None:
+        best = select_model_grid(u, y, method=args.method, max_na=args.max_na, max_nb=args.max_nb,
+                                 nk=args.nk, alphas=args.alphas, cv_splits=args.cv_splits)
+        na = int(best['na'] if best is not None else 2)
+        nb = int(best['nb'] if best is not None else 1)
+        alpha = float(best.get('alpha', 0.0) if best is not None else 0.0)
+    else:
+        na = int(args.order)
+        nb = max(1, min(args.max_nb, 1))  # default to 1 if not tuned
+        alpha = (args.alphas[0] if args.alphas else 0.0)
 
-    a, b, k_start = fit_arx(u, y, na=na, nb=nb)
+    # Fit final model on full data
+    fit_func = (lambda uu, yy, na_, nb_, nk_: fit_arx_ridge(uu, yy, na_, nb_, nk_, alpha)) if args.method == 'ridge-arx' else fit_arx_ols
+    fit = fit_func(u, y, na, nb, args.nk)
 
-    A, B, C, D = build_state_space_from_arx(a, b)
+    # Build state-space realization
+    A, B, C, D = arx_to_statespace(fit['a'], fit['b'])
 
-    # Print results
+    # Simulate full sequence (initial x built from available history)
+    def build_x0_from_history(k_start):
+        na_local = len(fit['a'])
+        nb_local = len(fit['b'])
+        nu_states_local = max(nb_local - 1, 0)
+        x0 = np.zeros((na_local + nu_states_local,), dtype=float)
+        for i in range(1, na_local + 1):
+            idx = k_start - i
+            x0[i - 1] = y[idx] if idx >= 0 else 0.0
+        for j in range(1, nu_states_local + 1):
+            idx = k_start - j
+            x0[na_local + j - 1] = u[idx] if idx >= 0 else 0.0
+        return x0
+
+    x0_full = build_x0_from_history(fit['k0'])
+    y_sim = simulate_ss(A, B, C, D, u, x0=x0_full)
+
+    # Compute residuals and RMSE
+    valid_slice = slice(fit['k0'], len(y))
+    y_valid = y[valid_slice]
+    y_sim_valid = y_sim[valid_slice]
+    rmse = math.sqrt(mean_squared_error(y_valid, y_sim_valid))
+
+    # Parameter bootstrap
+    boot_result = None
+    if args.bootstrap and args.bootstrap > 1:
+        boot_result = bootstrap_arx(u, y, na, nb, args.nk, fit_func, n_iter=args.bootstrap)
+        # compute 95% CI for theta vector
+        ci_low = boot_result['ci_low']
+        ci_high = boot_result['ci_high']
+
+    # Print concise report
     np.set_printoptions(precision=6, suppress=True)
-    print("Estimated ARX coefficients:")
-    print(f"  a (na={na}): {a}")
-    print(f"  b (nb={nb}): {b}")
-    print("\nState-space realization (discrete-time):")
-    print(f"  A (shape {A.shape}):\n{A}")
-    print(f"  B (shape {B.shape}):\n{B}")
-    print(f"  C (shape {C.shape}):\n{C}")
-    print(f"  D (shape {D.shape}):\n{D}")
+    print("Identification report")
+    print("---------------------")
+    print(f"File: {args.file}")
+    print(f"Method: {args.method}")
+    print(f"Selected na={na}, nb={nb}, nk={args.nk}, alpha={alpha}")
+    print(f"Data length: N={len(y)}; regression started at k={fit['k0']}")
+    print(f"RMSE (on regression range): {rmse:.6g}")
+    print("")
+    print("Estimated parameters (theta = [a1..ana, b0..b{nb-1}]):")
+    print(f" theta: {fit['theta']}")
+    if boot_result is not None:
+        print(" Parameter 95% bootstrap CI (low, high):")
+        for i, (low, high) in enumerate(zip(ci_low, ci_high)):
+            print(f"  th[{i}] : [{low:.6g}, {high:.6g}]")
+    print("")
+    print("State-space realization (discrete-time observer-canonical):")
+    print(f" A (shape {A.shape}):\n{A}")
+    print(f" B (shape {B.shape}):\n{B}")
+    print(f" C (shape {C.shape}):\n{C}")
+    print(f" D (shape {D.shape}):\n{D}")
 
-    # Simulate identified model on the input sequence
-    y_sim = simulate_ss(A, B, C, D, u)
+    # Poles and stability
+    try:
+        eigs = np.linalg.eigvals(A)
+        stable = np.all(np.abs(eigs) < 1.0 + 1e-12)
+        print(f"\nEigenvalues (poles) of A:\n {eigs}")
+        print(f"All poles inside unit circle (stable): {stable}")
+    except Exception as e:
+        print(f"Could not compute eigenvalues: {e}")
 
-    # Compute simple goodness-of-fit on overlapping region used for training
-    from math import sqrt
-    valid_idx = slice(k_start, len(y))
-    err = y[valid_idx] - y_sim[valid_idx]
-    rmse = sqrt(np.mean(err**2)) if err.size > 0 else float('nan')
-    print(f"\nData used for regression starts at sample k = {k_start}")
-    print(f"RMSE between measured and simulated output (on regression range): {rmse:.6g}")
+    # Create control StateSpace object
+    ss_sys = control.ss(A, B, C, D, True)
+    print("\n(control) StateSpace object created.")
 
+    # Plot diagnostics
     if args.plot:
         t = np.arange(len(y))
-        plt.figure(figsize=(9, 4))
-        plt.plot(t, y, label='Measured (Angle)', linewidth=1.2)
-        plt.plot(t, y_sim, label='Simulated (identified SS)', linestyle='--', linewidth=1.2)
-        plt.axvline(k_start, color='gray', linestyle=':', label='regression start')
-        plt.xlabel('sample k')
-        plt.ylabel('Angle')
-        plt.title('Measured vs Simulated Output')
-        plt.legend()
+        fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+        axes[0].plot(t, y_raw, label='Measured (raw)')
+        axes[0].plot(t, y_sim + info.get('y_mean', 0.0) + (np.arange(len(y))*0 if not args.detrend else 0), '--', label='Simulated (identified)')
+        axes[0].axvline(fit['k0'], color='k', linestyle=':', label='regression start')
+        axes[0].set_ylabel('Angle')
+        axes[0].legend()
+        axes[1].plot(t, u_raw, label='Input')
+        axes[1].set_ylabel('Input')
+        axes[1].legend()
+        axes[2].plot(t[fit['k0']:], y_valid - y_sim_valid, label='Residual (meas - sim)')
+        axes[2].axhline(0, color='k', linestyle=':')
+        axes[2].set_xlabel('sample k')
+        axes[2].set_ylabel('Residual')
+        axes[2].legend()
         plt.tight_layout()
         plt.show()
+
+    # Save result summary to file
+    out_summary = {
+        'method': args.method,
+        'na': int(na), 'nb': int(nb), 'nk': int(args.nk), 'alpha': float(alpha),
+        'theta': fit['theta'].tolist(),
+        'A': A.tolist(), 'B': B.tolist(), 'C': C.tolist(), 'D': D.tolist(),
+        'rmse': float(rmse),
+        'k0': int(fit['k0'])
+    }
+    summary_fn = os.path.splitext(args.file)[0] + '_id_summary.json'
+    try:
+        import json
+        with open(summary_fn, 'w') as fh:
+            json.dump(out_summary, fh, indent=2)
+        print(f"\nSaved identification summary to: {summary_fn}")
+    except Exception:
+        pass
 
 if __name__ == '__main__':
     main()
