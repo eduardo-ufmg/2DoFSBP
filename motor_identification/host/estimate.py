@@ -385,6 +385,7 @@ def main():
         axes[2].set_ylabel('Residual')
         axes[2].legend()
         plt.tight_layout()
+        plt.savefig('estimation_diagnostics.png')
         plt.show()
 
     # Save result summary to file
