@@ -6,7 +6,7 @@
 
 const unsigned int testDataLength = 4096;
 const unsigned int samplePeriodMs = 10;
-const unsigned int inputChangeTimeMsMax = 500;
+const unsigned int inputChangeTimeMsMax = 100;
 const unsigned int inputChangeTimeMsMin = 50;
 const unsigned int maxNeededInputArrayLength = testDataLength / (inputChangeTimeMsMin / samplePeriodMs);
 

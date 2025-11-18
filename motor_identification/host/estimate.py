@@ -261,6 +261,26 @@ def bootstrap_arx(u: np.ndarray, y: np.ndarray, na: int, nb: int, nk: int, fit_f
     return dict(mean=mean_theta, ci_low=ci_low, ci_high=ci_high, samples=thetas, fit0=fit0)
 
 # -----------------------
+# Train/Test Split for Time Series
+# -----------------------
+def split_train_test(u: np.ndarray, y: np.ndarray, test_size: float = 0.2) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
+    """
+    Split time series data into train and test sets.
+    Returns: u_train, y_train, u_test, y_test, split_index
+    """
+    N = len(u)
+    split_idx = int(N * (1.0 - test_size))
+    split_idx = max(split_idx, 10)  # Ensure at least 10 samples in train
+    split_idx = min(split_idx, N - 5)  # Ensure at least 5 samples in test
+    
+    u_train = u[:split_idx]
+    y_train = y[:split_idx]
+    u_test = u[split_idx:]
+    y_test = y[split_idx:]
+    
+    return u_train, y_train, u_test, y_test, split_idx
+
+# -----------------------
 # Main CLI
 # -----------------------
 def main():
@@ -275,15 +295,20 @@ def main():
     parser.add_argument('--cv-splits', type=int, default=5)
     parser.add_argument('--bootstrap', type=int, default=0, help='Number of bootstrap iterations to estimate parameter CIs (0=off)')
     parser.add_argument('--detrend', action='store_true', help='Remove linear trend and mean before identification.')
+    parser.add_argument('--test-size', type=float, default=0.2, help='Fraction of data to use for testing (default 0.2)')
     parser.add_argument('--plot', action='store_true', help='Plot diagnostics (requires matplotlib).')
     args = parser.parse_args()
 
     u_raw, y_raw = read_data(args.file)
     u, y, info = detrend_remove_mean(u_raw.copy(), y_raw.copy(), detrend=args.detrend)
 
-    # Model selection
+    # Train/Test split
+    u_train, y_train, u_test, y_test, split_idx = split_train_test(u, y, test_size=args.test_size)
+    print(f"Data split: {len(u_train)} training samples, {len(u_test)} test samples (split at index {split_idx})")
+
+    # Model selection (using training data only)
     if args.order is None:
-        best = select_model_grid(u, y, method=args.method, max_na=args.max_na, max_nb=args.max_nb,
+        best = select_model_grid(u_train, y_train, method=args.method, max_na=args.max_na, max_nb=args.max_nb,
                                  nk=args.nk, alphas=args.alphas, cv_splits=args.cv_splits)
         na = int(best['na'] if best is not None else 2)
         nb = int(best['nb'] if best is not None else 1)
@@ -293,53 +318,72 @@ def main():
         nb = max(1, min(args.max_nb, 1))  # default to 1 if not tuned
         alpha = (args.alphas[0] if args.alphas else 0.0)
 
-    # Fit final model on full data
+    # Fit final model on training data only
     fit_func = (lambda uu, yy, na_, nb_, nk_: fit_arx_ridge(uu, yy, na_, nb_, nk_, alpha)) if args.method == 'ridge-arx' else fit_arx_ols
-    fit = fit_func(u, y, na, nb, args.nk)
+    fit = fit_func(u_train, y_train, na, nb, args.nk)
 
     # Build state-space realization
     A, B, C, D = arx_to_statespace(fit['a'], fit['b'])
 
-    # Simulate full sequence (initial x built from available history)
-    def build_x0_from_history(k_start):
+    # Simulate on training data
+    def build_x0_from_history(k_start, u_data, y_data):
         na_local = len(fit['a'])
         nb_local = len(fit['b'])
         nu_states_local = max(nb_local - 1, 0)
         x0 = np.zeros((na_local + nu_states_local,), dtype=float)
         for i in range(1, na_local + 1):
             idx = k_start - i
-            x0[i - 1] = y[idx] if idx >= 0 else 0.0
+            x0[i - 1] = y_data[idx] if idx >= 0 else 0.0
         for j in range(1, nu_states_local + 1):
             idx = k_start - j
-            x0[na_local + j - 1] = u[idx] if idx >= 0 else 0.0
+            x0[na_local + j - 1] = u_data[idx] if idx >= 0 else 0.0
         return x0
 
-    x0_full = build_x0_from_history(fit['k0'])
-    y_sim = simulate_ss(A, B, C, D, u, x0=x0_full)
+    x0_train = build_x0_from_history(fit['k0'], u_train, y_train)
+    y_sim_train = simulate_ss(A, B, C, D, u_train, x0=x0_train)
 
-    # Compute residuals and RMSE
-    valid_slice = slice(fit['k0'], len(y))
-    y_valid = y[valid_slice]
-    y_sim_valid = y_sim[valid_slice]
-    rmse = math.sqrt(mean_squared_error(y_valid, y_sim_valid))
+    # Compute training residuals and RMSE
+    valid_slice_train = slice(fit['k0'], len(y_train))
+    y_train_valid = y_train[valid_slice_train]
+    y_sim_train_valid = y_sim_train[valid_slice_train]
+    rmse_train = math.sqrt(mean_squared_error(y_train_valid, y_sim_train_valid))
 
-    # Parameter bootstrap
+    # Simulate on test data (use last states from training or initial states from test boundary)
+    x0_test = build_x0_from_history(0, u, y)  # Use combined data for initial state at split point
+    # Adjust: use the actual split boundary states
+    x0_test = np.zeros((A.shape[0],), dtype=float)
+    na_local = len(fit['a'])
+    nb_local = len(fit['b'])
+    nu_states_local = max(nb_local - 1, 0)
+    for i in range(1, na_local + 1):
+        idx = split_idx - i
+        x0_test[i - 1] = y[idx] if idx >= 0 else 0.0
+    for j in range(1, nu_states_local + 1):
+        idx = split_idx - j
+        x0_test[na_local + j - 1] = u[idx] if idx >= 0 else 0.0
+    
+    y_sim_test = simulate_ss(A, B, C, D, u_test, x0=x0_test)
+    rmse_test = math.sqrt(mean_squared_error(y_test, y_sim_test))
+
+    # Parameter bootstrap (on training data)
     boot_result = None
     if args.bootstrap and args.bootstrap > 1:
-        boot_result = bootstrap_arx(u, y, na, nb, args.nk, fit_func, n_iter=args.bootstrap)
+        boot_result = bootstrap_arx(u_train, y_train, na, nb, args.nk, fit_func, n_iter=args.bootstrap)
         # compute 95% CI for theta vector
         ci_low = boot_result['ci_low']
         ci_high = boot_result['ci_high']
 
     # Print concise report
     np.set_printoptions(precision=6, suppress=True)
-    print("Identification report")
+    print("\nIdentification report")
     print("---------------------")
     print(f"File: {args.file}")
     print(f"Method: {args.method}")
     print(f"Selected na={na}, nb={nb}, nk={args.nk}, alpha={alpha}")
-    print(f"Data length: N={len(y)}; regression started at k={fit['k0']}")
-    print(f"RMSE (on regression range): {rmse:.6g}")
+    print(f"Training data length: N={len(y_train)}; regression started at k={fit['k0']}")
+    print(f"Test data length: N={len(y_test)}")
+    print(f"RMSE (training): {rmse_train:.6g}")
+    print(f"RMSE (test): {rmse_test:.6g}")
     print("")
     print("Estimated parameters (theta = [a1..ana, b0..b{nb-1}]):")
     print(f" theta: {fit['theta']}")
@@ -370,20 +414,43 @@ def main():
     # Plot diagnostics
     if args.plot:
         t = np.arange(len(y))
-        fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
-        axes[0].plot(t, y_raw, label='Measured (raw)')
-        axes[0].plot(t, y_sim + info.get('y_mean', 0.0) + (np.arange(len(y))*0 if not args.detrend else 0), '--', label='Simulated (identified)')
-        axes[0].axvline(fit['k0'], color='k', linestyle=':', label='regression start')
+        t_train = t[:split_idx]
+        t_test = t[split_idx:]
+        
+        # Combine simulations for full plot
+        y_sim_full = np.concatenate([y_sim_train, y_sim_test])
+        
+        fig, axes = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
+        
+        # Plot 1: Full comparison with train/test regions
+        axes[0].plot(t, y_raw, label='Measured (raw)', alpha=0.7)
+        axes[0].plot(t, y_sim_full + info.get('y_mean', 0.0), '--', label='Simulated (identified)', linewidth=2)
+        axes[0].axvline(fit['k0'], color='gray', linestyle=':', alpha=0.5, label='regression start')
+        axes[0].axvline(split_idx, color='red', linestyle='--', linewidth=2, label='train/test split')
         axes[0].set_ylabel('Angle')
         axes[0].legend()
-        axes[1].plot(t, u_raw, label='Input')
+        axes[0].set_title('Full Signal: Measured vs Simulated')
+        
+        # Plot 2: Input signal
+        axes[1].plot(t, u_raw, label='Input', color='green')
+        axes[1].axvline(split_idx, color='red', linestyle='--', linewidth=2, label='train/test split')
         axes[1].set_ylabel('Input')
         axes[1].legend()
-        axes[2].plot(t[fit['k0']:], y_valid - y_sim_valid, label='Residual (meas - sim)')
+        
+        # Plot 3: Training residuals
+        axes[2].plot(t_train[fit['k0']:], y_train_valid - y_sim_train_valid, label=f'Train Residual (RMSE={rmse_train:.4g})', color='blue')
         axes[2].axhline(0, color='k', linestyle=':')
-        axes[2].set_xlabel('sample k')
-        axes[2].set_ylabel('Residual')
+        axes[2].axvline(split_idx, color='red', linestyle='--', linewidth=2)
+        axes[2].set_ylabel('Train Residual')
         axes[2].legend()
+        
+        # Plot 4: Test residuals
+        axes[3].plot(t_test, y_test - y_sim_test, label=f'Test Residual (RMSE={rmse_test:.4g})', color='orange')
+        axes[3].axhline(0, color='k', linestyle=':')
+        axes[3].set_xlabel('sample k')
+        axes[3].set_ylabel('Test Residual')
+        axes[3].legend()
+        
         plt.tight_layout()
         plt.savefig('estimation_diagnostics.png')
         plt.show()
@@ -394,8 +461,12 @@ def main():
         'na': int(na), 'nb': int(nb), 'nk': int(args.nk), 'alpha': float(alpha),
         'theta': fit['theta'].tolist(),
         'A': A.tolist(), 'B': B.tolist(), 'C': C.tolist(), 'D': D.tolist(),
-        'rmse': float(rmse),
-        'k0': int(fit['k0'])
+        'rmse_train': float(rmse_train),
+        'rmse_test': float(rmse_test),
+        'k0': int(fit['k0']),
+        'split_idx': int(split_idx),
+        'n_train': int(len(u_train)),
+        'n_test': int(len(u_test))
     }
     summary_fn = os.path.splitext(args.file)[0] + '_id_summary.json'
     try:
