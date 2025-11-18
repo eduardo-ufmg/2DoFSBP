@@ -272,12 +272,12 @@ def split_train_test(u: np.ndarray, y: np.ndarray, test_size: float = 0.2) -> tu
     split_idx = int(N * (1.0 - test_size))
     split_idx = max(split_idx, 10)  # Ensure at least 10 samples in train
     split_idx = min(split_idx, N - 5)  # Ensure at least 5 samples in test
-    
+
     u_train = u[:split_idx]
     y_train = y[:split_idx]
     u_test = u[split_idx:]
     y_test = y[split_idx:]
-    
+
     return u_train, y_train, u_test, y_test, split_idx
 
 # -----------------------
@@ -361,7 +361,7 @@ def main():
     for j in range(1, nu_states_local + 1):
         idx = split_idx - j
         x0_test[na_local + j - 1] = u[idx] if idx >= 0 else 0.0
-    
+
     y_sim_test = simulate_ss(A, B, C, D, u_test, x0=x0_test)
     rmse_test = math.sqrt(mean_squared_error(y_test, y_sim_test))
 
@@ -416,41 +416,41 @@ def main():
         t = np.arange(len(y))
         t_train = t[:split_idx]
         t_test = t[split_idx:]
-        
+
         # Combine simulations for full plot
         y_sim_full = np.concatenate([y_sim_train, y_sim_test])
-        
+
         fig, axes = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
-        
+
         # Plot 1: Full comparison with train/test regions
-        axes[0].plot(t, y_raw, label='Measured (raw)', alpha=0.7)
-        axes[0].plot(t, y_sim_full + info.get('y_mean', 0.0), '--', label='Simulated (identified)', linewidth=2)
+        axes[0].plot(t, y_raw, label='Measured', alpha=0.7)
+        axes[0].plot(t, y_sim_full + info.get('y_mean', 0.0), '--', label='Simulated', linewidth=2)
         axes[0].axvline(fit['k0'], color='gray', linestyle=':', alpha=0.5, label='regression start')
         axes[0].axvline(split_idx, color='red', linestyle='--', linewidth=2, label='train/test split')
         axes[0].set_ylabel('Angle')
         axes[0].legend()
         axes[0].set_title('Full Signal: Measured vs Simulated')
-        
+
         # Plot 2: Input signal
         axes[1].plot(t, u_raw, label='Input', color='green')
         axes[1].axvline(split_idx, color='red', linestyle='--', linewidth=2, label='train/test split')
         axes[1].set_ylabel('Input')
         axes[1].legend()
-        
+
         # Plot 3: Training residuals
         axes[2].plot(t_train[fit['k0']:], y_train_valid - y_sim_train_valid, label=f'Train Residual (RMSE={rmse_train:.4g})', color='blue')
         axes[2].axhline(0, color='k', linestyle=':')
         axes[2].axvline(split_idx, color='red', linestyle='--', linewidth=2)
         axes[2].set_ylabel('Train Residual')
         axes[2].legend()
-        
+
         # Plot 4: Test residuals
         axes[3].plot(t_test, y_test - y_sim_test, label=f'Test Residual (RMSE={rmse_test:.4g})', color='orange')
         axes[3].axhline(0, color='k', linestyle=':')
         axes[3].set_xlabel('sample k')
         axes[3].set_ylabel('Test Residual')
         axes[3].legend()
-        
+
         plt.tight_layout()
         plt.savefig('estimation_diagnostics.png')
         plt.show()
