@@ -104,18 +104,14 @@ void loop() {
 
 ResultCode runMotorTest()
 {
-    unsigned int testStartTimeMs = millis();
-    unsigned int inputChangeLastTimeMs = testStartTimeMs, inputChangeCurrentTimeMs = testStartTimeMs;
-    unsigned int sampleLastTimeMs = testStartTimeMs, sampleCurrentTimeMs = testStartTimeMs;
-
     float inputValues[maxNeededInputArrayLength];
     unsigned int inputChangeTimesMs[maxNeededInputArrayLength];
 
-    float inputValue = 0.0f;
+    float inputValue = 0.01f;
 
     // Pre-generate random input values and their change times
     for (unsigned int i = 0; i < maxNeededInputArrayLength; i++) {
-        inputValues[i] = (static_cast<float>(esp_random()) / UINT32_MAX) / 2.0f - 0.25f; // Random value between -0.25 and +0.25
+        inputValues[i] = (static_cast<float>(esp_random()) / UINT32_MAX) / 5.0f - 0.1f; // Random value between -0.1 and +0.1
         inputChangeTimesMs[i] = esp_random() % (inputChangeTimeMsMax - inputChangeTimeMsMin + 1) + inputChangeTimeMsMin;
     }
     
@@ -125,6 +121,14 @@ ResultCode runMotorTest()
 
     motor.brake(false);
     motor.setSpeed(inputValue);
+
+    delay(1000); // Allow some time for motor to start
+
+    unsigned int testStartTimeMs = millis();
+    unsigned int inputChangeLastTimeMs = testStartTimeMs, inputChangeCurrentTimeMs = testStartTimeMs;
+    unsigned int sampleLastTimeMs = testStartTimeMs, sampleCurrentTimeMs = testStartTimeMs;
+
+    motor.resetEncoder();
 
     for (unsigned int i = 0; i < testDataLength; i++) {
         testData.input[i] = inputValue;
