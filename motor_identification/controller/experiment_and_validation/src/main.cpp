@@ -121,6 +121,8 @@ ResultCode runMotorTest()
     
     unsigned int inputChangeTimeMs = inputChangeTimesMs[0];
 
+    unsigned int inputIndex = 1; // Start from second input since first is already set to 0.0f
+
     motor.brake(false);
     motor.setSpeed(inputValue);
 
@@ -134,13 +136,12 @@ ResultCode runMotorTest()
             inputChangeLastTimeMs = inputChangeCurrentTimeMs; // Update last change time
 
             // Update input value and change time
-            // the module ensures we don't go out of bounds
-            // access is not sequential, but that's acceptable, as the inputValues
-            // and inputChangeTimesMs arrays are pre-generated with sufficient length
-            // and are random, so we can just wrap around when we exceed the length
-            inputValue = inputValues[i % maxNeededInputArrayLength];
-            inputChangeTimeMs = inputChangeTimesMs[i % maxNeededInputArrayLength];
+            inputValue = inputValues[inputIndex];
+            inputChangeTimeMs = inputChangeTimesMs[inputIndex];
             motor.setSpeed(inputValue); // Apply new input value
+
+            // Increment input index
+            inputIndex ++;
         }
 
         sampleCurrentTimeMs = millis(); // Update current time for sampling
