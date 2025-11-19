@@ -6,8 +6,8 @@
 
 const unsigned int testDataLength = 4096;
 const unsigned int samplePeriodMs = 10;
-const unsigned int inputChangeTimeMsMax = 100;
-const unsigned int inputChangeTimeMsMin = 50;
+const unsigned int inputChangeTimeMsMax = 200;
+const unsigned int inputChangeTimeMsMin = 100;
 const unsigned int maxNeededInputArrayLength = testDataLength / (inputChangeTimeMsMin / samplePeriodMs);
 
 Nidec24H motor(27, 26, 25, 33, 32, 20000, 8, 100);
