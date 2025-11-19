@@ -1,0 +1,26 @@
+{
+  "sampling_frequency_Hz": 100.0,
+  "n_samples": 4096,
+  "sg_window_samples": 13,
+  "regressors": [
+    "u",
+    "omega",
+    "sign_omega",
+    "const"
+  ],
+  "coefficients": {
+    "u": 413.5088569137422,
+    "omega": -1.6109969564779152,
+    "sign_omega": -3.2974825186473895,
+    "const": 0.0170819011118543
+  },
+  "r2_omega_dot_fit": 0.8663897919880852,
+  "inertia_info_provided": true,
+  "inertia_results": {
+    "I_w": 0.0002745,
+    "K_tau_per_input": 0.11350818122282223,
+    "B_viscous_Nm_per_rad_per_s": 0.00044221866455318773,
+    "Tau_coulomb_Nm": -0.0009051589513687084,
+    "Tau_bias_Nm": 4.688981855204006e-06
+  }
+}

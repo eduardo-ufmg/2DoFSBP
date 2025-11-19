@@ -1,0 +1,24 @@
+{
+  "identified_json_used": "/home/eduardo/ufmg/curso/tcpi/2DoFSBP/motor_control/host/identified_model.json",
+  "model_coefficients": {
+    "a": 413.5088569137422,
+    "b": -1.6109969564779152,
+    "c": -3.2974825186473895,
+    "d": 0.0170819011118543
+  },
+  "I_w": 0.0002745,
+  "K_tau_per_input": 0.11350818122282223,
+  "design_parameters": {
+    "f_bw_Hz": 10.0,
+    "Kp": 553.5447083629487,
+    "Ki": 3478.023978453088
+  },
+  "simulation": {
+    "sim_time_s": 1.0,
+    "tau_step_Nm": 0.05,
+    "tau_step_time_s": 0.05,
+    "steady_state_error_Nm": 0.006324221731427562,
+    "rise_time_s_10_90": 0.0
+  },
+  "notes": "Controller uses algebraic explicit implementation that accounts for the identified static gain K_tau and tau0 (omega-dependent term). Tune f_bw and integrator fraction if needed."
+}
