@@ -61,7 +61,7 @@ def design_pi_gains(K_tau, f_bw_hz, f_int_frac=10.0):
     Simple heuristic design for PI on torque loop using static gain K_tau (N·m per unit input).
     - target closed-loop bandwidth f_bw_hz (Hz)
     - integral corner placed f_bw_hz / f_int_frac
-    Returns (Kp, Ki) continuous-time gains where Ki has units N·m/s per unit-error? 
+    Returns (Kp, Ki) continuous-time gains where Ki has units N·m/s per unit-error
     In this implementation Ki is the discrete integrator coefficient scaled for dt in sim.
     """
     if K_tau <= 0:
@@ -151,6 +151,18 @@ def default_step_waveform(tau_step, t_step):
         return tau_step if t >= t_step else 0.0
     return wf
 
+def random_steps_waveform(amplitudes, step_duration):
+    """
+    Piecewise-constant waveform over successive intervals of length step_duration.
+    amplitudes: list/array of torque levels (N·m).
+    """
+    def wf(t):
+        idx = int(t // step_duration)
+        if idx < len(amplitudes):
+            return amplitudes[idx]
+        return amplitudes[-1]
+    return wf
+
 def main():
     parser = argparse.ArgumentParser(description="Design inner torque loop from identified model JSON.")
     parser.add_argument('--json', default='identified_model.json', help='Path to identified_model.json')
@@ -161,6 +173,11 @@ def main():
     parser.add_argument('--tau_step_time', type=float, default=0.05, help='Time at which torque step is applied (s).')
     parser.add_argument('--out_prefix', default='inner_loop_', help='Prefix for output files.')
     parser.add_argument('--u_sat', type=float, default=1.0, help='Motor command saturation (default 1.0).')
+    # random step test arguments
+    parser.add_argument('--random_steps', action='store_true', help='Use random sequence of torque steps instead of single step.')
+    parser.add_argument('--n_steps', type=int, default=0, help='Number of random torque steps (ignored unless --random_steps).')
+    parser.add_argument('--step_duration', type=float, default=0.05, help='Duration of each random step (s).')
+    parser.add_argument('--rand_seed', type=int, default=None, help='Random seed for reproducibility in random step mode.')
     args = parser.parse_args()
 
     if not os.path.isfile(args.json):
@@ -196,36 +213,54 @@ def main():
         print("ERROR: f_bw must be positive.", file=sys.stderr)
         sys.exit(2)
 
-    # design PI gains (continuous-time heuristic)
+    # design PI gains
     Kp_cont, Ki_cont = design_pi_gains(K_tau, f_bw_hz=f_bw, f_int_frac=10.0)
     # For discrete-time integrator in simulation we use Ki_cont as continuous Ki (rad/s), and convert during update by multiplying I_int*dt earlier (we already multiplied error * dt)
     # In our algebraic controller expression we used Ki*I_int where I_int is integral of error (N·m·s). So Ki_cont is used directly.
     Kp = Kp_cont
     Ki = Ki_cont
 
-    # simulate inner loop responding to torque step
+    # waveform selection
     tau_step = float(args.tau_step)
     sim_time = float(args.sim_time)
-    waveform = default_step_waveform(tau_step, args.tau_step_time)
-
+    random_mode = args.random_steps and args.n_steps > 0
+    amplitudes = None
+    if random_mode:
+        if args.rand_seed is not None:
+            np.random.seed(args.rand_seed)
+        # maximum nominal torque capability (approx): K_tau * u_sat
+        tau_max = K_tau * args.u_sat
+        amplitudes = np.random.uniform(-tau_max, tau_max, args.n_steps)
+        waveform = random_steps_waveform(amplitudes, args.step_duration)
+        sim_time = args.n_steps * args.step_duration
+    else:
+        waveform = default_step_waveform(tau_step, args.tau_step_time)
     rec = simulate_inner_loop(a, b, c, d, I_w, K_tau, Kp, Ki, fs, sim_time, waveform, u_sat=args.u_sat)
 
     # compute simple metrics: rise time (10-90), steady-state error
     tau_ref = rec['tau_ref']
     tau_meas = rec['tau_meas']
     t = rec['t']
-    # find indices after step time
-    step_idx = np.where(t >= args.tau_step_time)[0][0]
-    tau_target = tau_step
-    # steady-state window: last 20% of sim
-    ss_start = int(len(t)*0.8)
-    ss_error = tau_target - np.mean(tau_meas[ss_start:])
-    # rise time 10-90%
-    try:
-        idx10 = step_idx + np.where(tau_meas[step_idx:] >= 0.1 * tau_target)[0][0]
-        idx90 = step_idx + np.where(tau_meas[step_idx:] >= 0.9 * tau_target)[0][0]
-        rise_time = t[idx90] - t[idx10]
-    except Exception:
+    if not random_mode:
+        # find indices after step time
+        step_idx = np.where(t >= args.tau_step_time)[0][0]
+        tau_target = tau_step
+        # steady-state window: last 20% of sim
+        ss_start = int(len(t)*0.8)
+        ss_error = tau_target - np.mean(tau_meas[ss_start:])
+        # rise time 10-90%
+        try:
+            idx10 = step_idx + np.where(tau_meas[step_idx:] >= 0.1 * tau_target)[0][0]
+            idx90 = step_idx + np.where(tau_meas[step_idx:] >= 0.9 * tau_target)[0][0]
+            rise_time = t[idx90] - t[idx10]
+        except Exception:
+            rise_time = None
+    else:
+        # metrics for random sequence
+        error = tau_ref - tau_meas
+        rms_error = float(np.sqrt(np.mean(error**2)))
+        mae_error = float(np.mean(np.abs(error)))
+        ss_error = None
         rise_time = None
 
     # save plots
@@ -260,11 +295,16 @@ def main():
         'K_tau_per_input': K_tau,
         'design_parameters': {'f_bw_Hz': f_bw, 'Kp': Kp, 'Ki': Ki},
         'simulation': {
+            'mode': 'random_steps' if random_mode else 'single_step',
             'sim_time_s': sim_time,
-            'tau_step_Nm': tau_step,
-            'tau_step_time_s': args.tau_step_time,
-            'steady_state_error_Nm': float(ss_error),
-            'rise_time_s_10_90': float(rise_time) if rise_time is not None else None
+            'tau_step_Nm': None if random_mode else tau_step,
+            'tau_step_time_s': None if random_mode else args.tau_step_time,
+            'steady_state_error_Nm': ss_error if ss_error is not None else None,
+            'rise_time_s_10_90': rise_time if rise_time is not None else None,
+            'rms_error_Nm': rms_error if random_mode else None,
+            'mean_abs_error_Nm': mae_error if random_mode else None,
+            'random_step_duration_s': args.step_duration if random_mode else None,
+            'random_amplitudes_Nm': amplitudes.tolist() if random_mode and amplitudes is not None else None
         },
         'notes': (
             "Controller uses algebraic explicit implementation that accounts for the "
@@ -283,13 +323,17 @@ def main():
     print(f"  inertia I_w = {I_w:.6g} kg·m^2, K_tau_per_input = {K_tau:.6g} N·m per unit input")
     print(f"  desired torque-loop bandwidth = {f_bw:.3g} Hz")
     print(f"  designed PI gains: Kp = {Kp:.6g}, Ki = {Ki:.6g} (continuous-time heuristic)")
-    print(f"  simulation: torque step {tau_step} N·m at t={args.tau_step_time}s, sim_time={sim_time}s")
-    if rise_time is not None:
-        print(f"  measured rise time (10->90%) = {rise_time:.4f} s")
+    if random_mode:
+        print(f"  random steps: n_steps={args.n_steps}, step_duration={args.step_duration}s, tau_max≈{K_tau*args.u_sat:.6g} N·m")
+        print(f"  RMS error = {rms_error:.6g} N·m, mean|error| = {mae_error:.6g} N·m")
     else:
-        print("  rise time: could not compute (insufficient excursion or saturation)")
-    print(f"  steady-state torque error (last 20% window) = {ss_error:.6g} N·m")
-    print(f"  output files: {prefix}torque_tracking.png, {prefix}control_signals.png, {prefix}summary.json")
+        print(f"  simulation: torque step {tau_step} N·m at t={args.tau_step_time}s, sim_time={sim_time}s")
+        if rise_time is not None:
+            print(f"  measured rise time (10->90%) = {rise_time:.4f} s")
+        else:
+            print("  rise time: could not compute (insufficient excursion or saturation)")
+        print(f"  steady-state torque error (last 20% window) = {ss_error:.6g} N·m")
+    print(f"  output files: {args.out_prefix}torque_tracking.png, {args.out_prefix}control_signals.png, {args.out_prefix}summary.json")
 
 if __name__ == '__main__':
     main()
