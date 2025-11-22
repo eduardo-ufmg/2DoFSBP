@@ -25,7 +25,7 @@ DEVICE_DATA_STREAM_END = b"DATA_END"
 
 
 def main():
-    print("--- Motor PID Test ---")
+    print("--- Motor Controller Test ---")
 
     try:
         ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=TIMEOUT_SEC)

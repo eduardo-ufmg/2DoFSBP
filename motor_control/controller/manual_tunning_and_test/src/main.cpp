@@ -1,6 +1,6 @@
-#include <AntiWindupPID.h>
 #include <Arduino.h>
 #include <Comms.h>
+#include <MotorFeedForward.h>
 #include <Nidec24H.h>
 
 const unsigned int testDataLength = 1024;
@@ -22,7 +22,7 @@ typedef struct
 TestData testData;
 ResultCode testResult = RESULT_ERROR;
 
-AntiWindupPID pidController(5.0f, 900.0f, 0.0f, -1.0f, 1.0f);
+MotorFeedforward feedforwardController(0.095f, 0.00048f, 0.000027f, -1.0f, 1.0f);
 
 void setup()
 {
@@ -107,10 +107,10 @@ ResultCode runMotorTest()
     unsigned int sampleLastTimeMs = testStartTimeMs, sampleCurrentTimeMs = testStartTimeMs;
 
     motor.resetEncoder();
-    pidController.setMode(true);
 
     float reference = 0.0f;
     float controlEffort = 0.0f;
+    float speedEstimate = 0.0f;
     float torqueEstimate = 0.0f;
 
     float aux_angle = 0.0f;
@@ -126,9 +126,11 @@ ResultCode runMotorTest()
 
         aux_angle = motor.readAngle();
 
+        speedEstimate = motor.estimateSpeed();
+
         torqueEstimate = motor.estimateTorque();
 
-        controlEffort = pidController.compute(reference, torqueEstimate);
+        controlEffort = feedforwardController.compute(reference, speedEstimate);
 
         motor.setSpeed(controlEffort);
 
