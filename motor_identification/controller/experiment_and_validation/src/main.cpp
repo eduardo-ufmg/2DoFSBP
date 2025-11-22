@@ -6,9 +6,9 @@
 
 const unsigned int testDataLength = 4096;
 const unsigned int samplePeriodMs = 10;
-const unsigned int inputChangeTimeMsMax = 200;
-const unsigned int inputChangeTimeMsMin = 100;
-const unsigned int maxNeededInputArrayLength = testDataLength / (inputChangeTimeMsMin / samplePeriodMs);
+const unsigned int inputChangeTimeMs = 100;
+const unsigned int inputArrayLength = testDataLength / (inputChangeTimeMs / samplePeriodMs);
+float inputValues[inputArrayLength];
 
 Nidec24H motor(27, 26, 25, 33, 32, 20000, 8, 100);
 
@@ -104,19 +104,13 @@ void loop() {
 
 ResultCode runMotorTest()
 {
-    float inputValues[maxNeededInputArrayLength];
-    unsigned int inputChangeTimesMs[maxNeededInputArrayLength];
 
-    float inputValue = 0.01f;
-
-    // Pre-generate random input values and their change times
-    for (unsigned int i = 0; i < maxNeededInputArrayLength; i++) {
-        inputValues[i] = (static_cast<float>(esp_random()) / UINT32_MAX) / 5.0f - 0.1f; // Random value between -0.1 and +0.1
-        inputChangeTimesMs[i] = esp_random() % (inputChangeTimeMsMax - inputChangeTimeMsMin + 1) + inputChangeTimeMsMin;
+    // Pre-generate random input values
+    for (unsigned int i = 0; i < inputArrayLength; i++) {
+        inputValues[i] = (static_cast<float>(esp_random()) / UINT32_MAX) * 0.2f - 0.1f; // Random value between -0.1 and +0.1
     }
-    
-    unsigned int inputChangeTimeMs = inputChangeTimesMs[0];
 
+    float inputValue = 0.0f;
     unsigned int inputIndex = 1; // Start from second input since first is already set to 0.0f
 
     motor.brake(false);
@@ -135,21 +129,14 @@ ResultCode runMotorTest()
         testData.angle[i] = motor.readAngle();
 
         inputChangeCurrentTimeMs = millis(); // Update current time for input change check
-
         if (inputChangeCurrentTimeMs - inputChangeLastTimeMs >= inputChangeTimeMs) { // Time to change input
-            inputChangeLastTimeMs = inputChangeCurrentTimeMs; // Update last change time
-
-            // Update input value and change time
-            inputValue = inputValues[inputIndex];
-            inputChangeTimeMs = inputChangeTimesMs[inputIndex];
-            motor.setSpeed(inputValue); // Apply new input value
-
-            // Increment input index
-            inputIndex ++;
+            inputValue = inputValues[inputIndex]; // Get next input value
+            motor.setSpeed(inputValue); // Apply new input to motor
+            inputIndex ++; // Increment input index
+            inputChangeLastTimeMs = inputChangeCurrentTimeMs; // Update last input change time
         }
 
         sampleCurrentTimeMs = millis(); // Update current time for sampling
-
         while (sampleCurrentTimeMs - sampleLastTimeMs < samplePeriodMs) {
             // Wait until it's time for the next sample
             sampleCurrentTimeMs = millis();
