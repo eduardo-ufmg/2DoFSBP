@@ -138,7 +138,7 @@ def main():
         
         with open(filename, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
-            writer.writerow(["Time (s)", "Input", "Angle"])
+            writer.writerow(["Time", "Input", "Angle"])
             for i in range(TEST_DATA_LENGTH):
                 writer.writerow([time_values[i], input_values[i], angle_values[i]])
 
