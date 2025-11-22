@@ -18,6 +18,7 @@ ResultCode sendTestData();
 typedef struct {
     float input[testDataLength];
     float angle[testDataLength];
+    float timeS[testDataLength];
 } TestData;
 
 TestData testData;
@@ -127,6 +128,7 @@ ResultCode runMotorTest()
     for (unsigned int i = 0; i < testDataLength; i++) {
         testData.input[i] = inputValue;
         testData.angle[i] = motor.readAngle();
+        testData.timeS[i] = (millis() - testStartTimeMs) / 1000.0f;
 
         inputChangeCurrentTimeMs = millis(); // Update current time for input change check
         if (inputChangeCurrentTimeMs - inputChangeLastTimeMs >= inputChangeTimeMs) { // Time to change input
@@ -159,6 +161,7 @@ ResultCode sendTestData()
 
     Serial.write((uint8_t*)testData.input, sizeof(testData.input));
     Serial.write((uint8_t*)testData.angle, sizeof(testData.angle));
+    Serial.write((uint8_t*)testData.timeS, sizeof(testData.timeS));
 
     Serial.flush();
 

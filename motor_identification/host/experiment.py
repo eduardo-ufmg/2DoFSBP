@@ -111,6 +111,12 @@ def main():
         if len(raw_angle_data) != bytes_per_array:
             print(f"Error: Incomplete angle data. Got {len(raw_angle_data)} bytes.")
             return
+        
+        print(f"   -> Reading {TEST_DATA_LENGTH} Time samples...")
+        raw_time_data = ser.read(bytes_per_array)
+        if len(raw_time_data) != bytes_per_array:
+            print(f"Error: Incomplete time data. Got {len(raw_time_data)} bytes.")
+            return
 
         # Check footer
         footer = ser.read(len(DEVICE_DATA_STREAM_END))
@@ -123,6 +129,8 @@ def main():
         fmt = f'<{TEST_DATA_LENGTH}f'
         input_values = struct.unpack(fmt, raw_input_data)
         angle_values = struct.unpack(fmt, raw_angle_data)
+        time_values = struct.unpack(fmt, raw_time_data)
+
 
         # 9. Save data to file
         filename = "experiment_data.csv"
@@ -130,9 +138,9 @@ def main():
         
         with open(filename, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
-            writer.writerow(["Input", "Angle"])
+            writer.writerow(["Time (s)", "Input", "Angle"])
             for i in range(TEST_DATA_LENGTH):
-                writer.writerow([input_values[i], angle_values[i]])
+                writer.writerow([time_values[i], input_values[i], angle_values[i]])
 
         # 10. Report experiment success
         print("10. Experiment finished successfully.")
@@ -140,14 +148,12 @@ def main():
         # 11. Plot data
         print("11. Plotting results...")
         plot_filename = "experiment_results.png"
-
-        time_axis = [i * SAMPLE_PERIOD_SEC for i in range(TEST_DATA_LENGTH)]
         
         plt.figure(figsize=(10, 8))
 
         # Top subplot: Input
         plt.subplot(2, 1, 1)
-        plt.plot(time_axis, input_values, color='blue', label='Input (Speed Setpoint)')
+        plt.plot(time_values, input_values, color='blue', label='Input (Speed Setpoint)')
         plt.title('Motor Experiment Results')
         plt.ylabel('Input Value')
         plt.grid(True, alpha=0.5)
@@ -155,7 +161,7 @@ def main():
 
         # Bottom subplot: Angle
         plt.subplot(2, 1, 2)
-        plt.plot(time_axis, angle_values, color='orange', label='Measured Angle')
+        plt.plot(time_values, angle_values, color='orange', label='Measured Angle')
         plt.xlabel('Time (seconds)')
         plt.ylabel('Angle')
         plt.grid(True, alpha=0.5)
