@@ -1,0 +1,51 @@
+# .clang-format
+
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+PointerAlignment: Middle       # “int *ptr” (pointer binds to the name)
+SortIncludes: true
+AccessModifierOffset: -4       # access-specifiers line up with the class/struct keyword
+ColumnLimit: 100               # wrap at 100 characters (adjust if needed)
+
+# Break-before-brace policy:
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: true             # place “{” on its own line after a class declaration
+  AfterStruct: true            # place “{” on its own line after a struct declaration
+  AfterUnion: true             # place “{” on its own line after a union declaration
+  AfterFunction: true          # place “{” on its own line after a function declaration
+  AfterControlStatement: false # place “{” on the same line as the control statement (with a space)
+  AfterNamespace: false
+  BeforeElse: false
+  BeforeCatch: false
+  BeforeWhile: false
+
+# Do not collapse short blocks or control statements onto a single line;
+# always use braces, even for one‐line bodies, and never inline:
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+
+# Control‐statement spacing:
+SpaceBeforeParens: ControlStatements  # e.g. “if (condition)” instead of “if(condition)”
+
+# No extra spaces inside parentheses or brackets:
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpacesInAngles: false
+SpacesInContainerLiterals: true
+
+# Indentation and alignment:
+IndentCaseLabels: false        # “case X:” lines line up with “switch”
+AlignTrailingComments: true
+DerivePointerAlignment: false  # don’t override PointerAlignment above
+
+# Ensure empty lines and other minor formatting:
+MaxEmptyLinesToKeep: 1
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortBlocksOnASingleLine: false
+ReflowComments: false
+SortUsingDeclarations: true

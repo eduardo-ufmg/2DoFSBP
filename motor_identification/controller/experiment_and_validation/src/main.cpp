@@ -1,6 +1,6 @@
 #include <Arduino.h>
-#include <Nidec24H.h>
 #include <Comms.h>
+#include <Nidec24H.h>
 
 #include "bootloader_random.h"
 
@@ -15,7 +15,8 @@ Nidec24H motor(27, 26, 25, 33, 32, 20000, 8, 100);
 ResultCode runMotorTest();
 ResultCode sendTestData();
 
-typedef struct {
+typedef struct
+{
     float input[testDataLength];
     float angle[testDataLength];
     float timeS[testDataLength];
@@ -90,10 +91,10 @@ void setup()
 
     // Disable random source after enough entropy is gathered
     bootloader_random_disable();
-
 }
 
-void loop() {
+void loop()
+{
 
     int ledHalfPeriodMs = (testResult == RESULT_OK) ? 200 : 1000;
 
@@ -108,7 +109,8 @@ ResultCode runMotorTest()
 
     // Pre-generate random input values
     for (unsigned int i = 0; i < inputArrayLength; i++) {
-        inputValues[i] = (static_cast<float>(esp_random()) / UINT32_MAX) * 0.2f - 0.1f; // Random value between -0.1 and +0.1
+        inputValues[i] = (static_cast<float>(esp_random()) / UINT32_MAX) * 0.2f -
+                         0.1f; // Random value between -0.1 and +0.1
     }
 
     float inputValue = 0.0f;
@@ -120,7 +122,8 @@ ResultCode runMotorTest()
     delay(1000); // Allow some time for motor to start
 
     unsigned int testStartTimeMs = millis();
-    unsigned int inputChangeLastTimeMs = testStartTimeMs, inputChangeCurrentTimeMs = testStartTimeMs;
+    unsigned int inputChangeLastTimeMs = testStartTimeMs,
+                 inputChangeCurrentTimeMs = testStartTimeMs;
     unsigned int sampleLastTimeMs = testStartTimeMs, sampleCurrentTimeMs = testStartTimeMs;
 
     motor.resetEncoder();
@@ -131,10 +134,11 @@ ResultCode runMotorTest()
         testData.timeS[i] = (millis() - testStartTimeMs) / 1000.0f;
 
         inputChangeCurrentTimeMs = millis(); // Update current time for input change check
-        if (inputChangeCurrentTimeMs - inputChangeLastTimeMs >= inputChangeTimeMs) { // Time to change input
-            inputValue = inputValues[inputIndex]; // Get next input value
-            motor.setSpeed(inputValue); // Apply new input to motor
-            inputIndex ++; // Increment input index
+        if (inputChangeCurrentTimeMs - inputChangeLastTimeMs >=
+            inputChangeTimeMs) {                              // Time to change input
+            inputValue = inputValues[inputIndex];             // Get next input value
+            motor.setSpeed(inputValue);                       // Apply new input to motor
+            inputIndex++;                                     // Increment input index
             inputChangeLastTimeMs = inputChangeCurrentTimeMs; // Update last input change time
         }
 
@@ -159,9 +163,9 @@ ResultCode sendTestData()
 
     Serial.flush();
 
-    Serial.write((uint8_t*)testData.input, sizeof(testData.input));
-    Serial.write((uint8_t*)testData.angle, sizeof(testData.angle));
-    Serial.write((uint8_t*)testData.timeS, sizeof(testData.timeS));
+    Serial.write((uint8_t *)testData.input, sizeof(testData.input));
+    Serial.write((uint8_t *)testData.angle, sizeof(testData.angle));
+    Serial.write((uint8_t *)testData.timeS, sizeof(testData.timeS));
 
     Serial.flush();
 

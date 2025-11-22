@@ -29,16 +29,16 @@ def generate_footprint():
     # The (fp_text ...), (fp_line ...), etc. are optional but good for documentation.
     file_content = [
         f"(module {FOOTPRINT_NAME} (layer F.Cu) (tedit 5B307E46)",
-        "  (descr \"Perfboard, {ROWS}x{COLS} grid, {PITCH:.2f}mm pitch, "
-        f"{PAD_DIA:.2f}mm pads, {DRILL_DIA:.2f}mm drills\")",
-        "  (tags \"perfboard protoboard\")",
+        '  (descr "Perfboard, {ROWS}x{COLS} grid, {PITCH:.2f}mm pitch, '
+        f'{PAD_DIA:.2f}mm pads, {DRILL_DIA:.2f}mm drills")',
+        '  (tags "perfboard protoboard")',
         f"  (fp_text reference REF** (at 0 {-(y_offset + 2)}) (layer F.SilkS) (effects (font (size 1 1) (thickness 0.15))))",
         f"  (fp_text value {FOOTPRINT_NAME} (at 0 {y_offset + 2}) (layer F.Fab) (effects (font (size 1 1) (thickness 0.15))))",
         # Add a bounding box on the fabrication layer for clarity
         f"  (fp_line (start {-x_offset - PITCH/2} {-y_offset - PITCH/2}) (end {x_offset + PITCH/2} {-y_offset - PITCH/2}) (layer F.Fab) (width 0.15))",
         f"  (fp_line (start {x_offset + PITCH/2} {-y_offset - PITCH/2}) (end {x_offset + PITCH/2} {y_offset + PITCH/2}) (layer F.Fab) (width 0.15))",
         f"  (fp_line (start {x_offset + PITCH/2} {y_offset + PITCH/2}) (end {-x_offset - PITCH/2} {y_offset + PITCH/2}) (layer F.Fab) (width 0.15))",
-        f"  (fp_line (start {-x_offset - PITCH/2} {y_offset + PITCH/2}) (end {-x_offset - PITCH/2} {-y_offset - PITCH/2}) (layer F.Fab) (width 0.15))"
+        f"  (fp_line (start {-x_offset - PITCH/2} {y_offset + PITCH/2}) (end {-x_offset - PITCH/2} {-y_offset - PITCH/2}) (layer F.Fab) (width 0.15))",
     ]
 
     # --- Generate Pads ---
