@@ -1,3 +1,4 @@
+#include <AntiWindupPID.h>
 #include <Arduino.h>
 #include <Comms.h>
 #include <MotorFeedForward.h>
@@ -23,6 +24,12 @@ TestData testData;
 ResultCode testResult = RESULT_ERROR;
 
 MotorFeedforward feedforwardController(0.095f, 0.00048f, 0.000027f, -1.0f, 1.0f);
+AntiWindupPID pidController(5.0f, 900.0f, 0.0f, -1.0f, 1.0f);
+
+#define CTRL_PID
+#ifndef CTRL_PID
+#define CTRL_FF
+#endif
 
 void setup()
 {
@@ -107,6 +114,9 @@ ResultCode runMotorTest()
     unsigned int sampleLastTimeMs = testStartTimeMs, sampleCurrentTimeMs = testStartTimeMs;
 
     motor.resetEncoder();
+#ifdef CTRL_PID
+    pidController.setMode(true); // Automatic mode
+#endif
 
     float reference = 0.0f;
     float controlEffort = 0.0f;
@@ -130,7 +140,12 @@ ResultCode runMotorTest()
 
         torqueEstimate = motor.estimateTorque();
 
+#ifdef CTRL_PID
+        controlEffort = pidController.compute(reference, torqueEstimate);
+#endif
+#ifdef CTRL_FF
         controlEffort = feedforwardController.compute(reference, speedEstimate);
+#endif
 
         motor.setSpeed(controlEffort);
 
